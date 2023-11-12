@@ -1,0 +1,9 @@
+---
+title: "Hello!"
+date: "November 10, 2023"
+format: html
+---
+
+My name is Michelle Qin (my last name is pronounced "chin" in English), and I am a first-year PhD student in Biostatistics at Johns Hopkins University. I use the pronouns she/her. This is what I look like:
+
+<img src="images/MichelleQinProfile.png" alt="Young Chinese American woman with slightly wavy black hair and bangs, wearing a white blouse" class="center" width="200"/>

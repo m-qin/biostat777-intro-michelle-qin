@@ -1,0 +1,11 @@
+---
+title: "About"
+---
+
+I grew up in Haverford, Pennsylvania and went to college in Cambridge, Massachusetts. I received my bachelor's degree in statistics along with a minor in global health & health policy from Harvard. I am now living in Baltimore, Maryland, where I am studying biostatistics as PhD student at Johns Hopkins.
+
+During my undergraduate years, I was inspired to pursue a career in public health after working with Dr. Cécile Viboud and a cross-institutional team of epidemiologists and other domain area experts [to project COVID-19 cases, deaths, and hospitalizations in the United States](https://covid19scenariomodelinghub.org), with the goal of advising decision-makers. Then, I had the wonderful opportunity to work with Dr. Francesca Dominici's group [to estimate the causal effects of three air pollutants on elderly Americans' Alzheimer's-related hospitalization rates](https://github.com/NSAPH-Projects/pm_no2_o3-adrd_hospitalization-medicare-causalgps).
+
+Over the course of my graduate education, I am excited to gain statistical expertise while identifying areas where I can have a positive, collaborative, public health impact. I am particularly interested in using statistics to promote health equity.
+
+In my free time, I enjoy running, reading, and getting to know my new city.

@@ -1,0 +1,298 @@
+---
+title: "2022 General Election Voter Turnout in Baltimore City"
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-summary: "Code"
+execute: 
+  error: false
+  message: false
+  warning: false
+bibliography: "references.bib"
+---
+
+# Background
+
+## Question I'm trying to answer
+
+In this project, I explore voter turnout in the 2022 general election across Baltimore City's 28 wards. (A ward is a geographic unit used by city government. A ward is larger than a precinct and smaller than a district.) My intended audience is the general public.
+
+This project was inspired by a class called Baltimore Community Data Science, taught by Dr. Ava Hoffman, Dr. Michael Rosenblum, and Dr. Carrie Wright, in partnership with League of Women Voters-Baltimore City and other community-based organizations [@lwv]. My project builds on past work by Michael Dunphy, Carrie Wright, and others, who analyzed the 2020 general election in Baltimore City [@bvcd; @party_at_the_polls]. I would also like to thank my classmates Lauren Klein and Ugochi Ejiobu and Dr. Michael Rosenblum, who worked and learned alongside me on voting in Baltimore City.
+
+### Further background information
+
+A general election is the final election (as opposed to a primary election) for a government office and occurs on Election Day on the first Tuesday of November every year. In 2022, Election Day was November 8.
+
+::: column-margin
+![Baltimore City Wards and Precincts in 2012, obtained from the Board of Elections website [@precincts2012]. Boundaries may have shifted since then.](images/CouncilDistricts_WardsPrecincts_tabloid-2012_1.pdf){width=50%}
+:::
+
+## Data sources and description
+
+For this project, I downloaded, parsed, and analyzed Baltimore City's official [report of election results by voting precinct](https://boe.baltimorecity.gov/sites/default/files/EL30%20GG%202022.pdf) for the 2022 general election (also called the 2022 "gubernatorial" election because the highest office being elected was the governor of Maryland) [@2022report].
+
+I focused on voter turnout, which is only a small subset of all the information contained in the original report. (The majority of the report covers the outcomes, i.e., number and percentage of votes received by all the candidates, of all the national, state, and local elections that Marylanders voted on on November 8, 2022.) For the dataset that I ultimately generated, I provide the following data dictionary:
+
+- *Precinct* (text, 296 unique values): Voting precinct, in the form of three digits indicating the ward, followed by a hyphen, followed by three digits indicating the precinct within that ward. For example, "028-015" is the 15th precinct in the 28th ward. Voting-eligible citizens are assigned to a precinct, where they may vote at a polling place on Election Day, based on where they live.
+- *Variable* (text, 3 unique values): Either the number of registered voters in a given precinct, or the number of ballots collected in a given precinct on Election Day, or the number of blank ballots collected in a given precinct on Election Day. A voter may turn in a blank ballot for a variety of reasons, such as protest, disinterest, or uncertainty, so the city counts the number of such ballots.
+- *Count* (number): The number quantifying the _Variable_ column.
+
+# Step-by-step analysis
+
+## Web scrape and wrangle the data
+
+```{bash download-data-bash, eval = F, echo = F}
+wget -c "https://boe.baltimorecity.gov/sites/default/files/EL30%20GG%202022.pdf" -O "data/baltimore_city_precincts_general_election_results_2022.pdf"
+```
+
+Baltimore City's report is available online, so my first step is to download it.
+
+```{r download-data, eval = F}
+#| code-summary: "Code to download 2022 election data"
+
+# location on user's computer
+dir <- ""
+
+# download all election results (from PDF)
+download.file(url = "https://boe.baltimorecity.gov/sites/default/files/EL30%20GG%202022.pdf",
+              destfile = paste0(dir, "data/baltimore_city_precincts_general_election_results_2022.pdf"))
+```
+
+```{r wrangle-data, eval = F}
+#| code-summary: "Code to wrangle 2022 election data"
+
+library(tabulizer) # for extract_text() function
+library(tidyverse) # for piping (%>%) and various functions
+
+# location on user's computer
+dir <- ""
+
+# read all election results, as text
+all_precinct_results <- extract_text(paste0(dir, "data/baltimore_city_precincts_general_election_results_2022.pdf"))
+
+# get names of precincts (FYI, three digits before the hyphen indicate the ward)
+regex_for_precincts <- "\\d{3}-\\d{3}"
+precinct_names <- unique(unlist(str_extract_all(string = all_precinct_results,
+                                                pattern = regex_for_precincts)))
+
+# set names of candidates for each election (office being voted on)
+results_line_by_line <- unlist(str_split(string = all_precinct_results,
+                                         pattern = "\n"))
+
+turnout_variables <- c("REGISTERED VOTERS - TOTAL",
+                       "BALLOTS CAST - TOTAL",
+                       "BALLOTS CAST - BLANK")
+
+# function to parse voter turnout for each precinct
+parse_turnout_results <- function(variable){
+  results_as_text <- str_extract(string = results_line_by_line,
+                                 pattern = paste0(variable, ".+?\\d+")) # extract the variable name and the counts
+  results_as_text <- results_as_text[!is.na(results_as_text)]
+  
+  results_as_tibble <- tibble(text = results_as_text) %>%
+    mutate(Precinct = precinct_names,
+           Variable = variable,
+           Count = str_extract(text, "\\d+"), # extract the number
+           text = NULL)
+  return(results_as_tibble)
+}
+
+# parse!
+turnout_results <- lapply(turnout_variables,
+                          parse_turnout_results) %>%
+  bind_rows()
+
+# save the resulting data table
+write_csv(turnout_results, file = paste0(dir, "data/baltimore_city_2022_general_election_turnout_results.csv"))
+```
+
+The official election report contains information on each precinct's number of people registered for this election, number of ballots (including blank ones) collected on Election Day, and number of blank ballots collected on Election Day. I extract and consolidate that information into a 888 x 3 data table (just the first 6 rows are previewed below).
+
+```{r preview-data}
+#| code-summary: "Preview the dataset generated"
+library(tidyverse)
+
+# location on user's computer
+dir <- ""
+
+# read data
+turnout_2022_table <- read_csv(paste0(dir, "data/baltimore_city_2022_general_election_turnout_results.csv"))
+
+# preview the data
+head(turnout_2022_table)
+```
+
+## Analyze and visualize the data
+
+Recognizing that a precinct is a very small geographical unit, containing only one polling place, I aggregate the 296 precincts into the 28 wards of Baltimore City.
+
+Then, I calculate the voter turnout in two ways: (1) number of ballots collected divided by number of registered voters or (2) number of _non-blank_ ballots collected divided by number of registered voters. In the plots below, the red line is the city-wide average voter turnout (which is 37.1% when blank ballots are included and 35.5% when blank ballots are not included), calculated in the same two ways.
+
+::: {.callout-tip}
+A voter may turn in a blank ballot for a variety of reasons, including protest of the candidates or the government, disinterest, or uncertainty/lack of confidence. Submitting a blank ballot takes a little more effort than abstaining (i.e., not voting), even though it does not change the outcome of an election. This is why election boards generally count the number of blank ballots.
+:::
+
+<!-- By showing the distribution of both of these statistics consecutively (in the histograms below) or side-by-side (in the facted boxplot below), we can see that blank ballots were not that common (since the distributions look pretty similar), though they aren't completely ignorable. -->
+
+```{r analyze-data, figures-side, fig.show="hold", out.width="70%"}
+#| code-summary: "Code to analyze and visualize the data"
+
+# location on user's computer
+dir <- ""
+
+# read data
+turnout_2022_table <- read_csv(paste0(dir, "data/baltimore_city_2022_general_election_turnout_results.csv"))
+
+# reshape table and calculate more variables
+turnout_2022_table <- turnout_2022_table %>%
+  mutate(Ward = substr(Precinct, start = 1, stop = 3)) %>%
+  pivot_wider(names_from = Variable,
+              values_from = Count) %>%
+  rename(Registered = `REGISTERED VOTERS - TOTAL`,
+         `Total Ballots` = `BALLOTS CAST - TOTAL`,
+         `Blank Ballots` = `BALLOTS CAST - BLANK`) %>%
+  mutate(`Non-Blank Ballots` = `Total Ballots` - `Blank Ballots`,
+         `Turnout including Blank Ballots (%)` = `Total Ballots` / Registered * 100,
+         `Turnout not including Blank Ballots (%)` = `Non-Blank Ballots` / Registered * 100)
+
+# aggregate 296 precincts (each contains only 1 polling place) to 28 wards
+turnout_2022_table_by_ward <- turnout_2022_table %>%
+  group_by(Ward) %>%
+  summarize(Registered = sum(Registered),
+            `Total Ballots` = sum(`Total Ballots`),
+            `Blank Ballots` = sum(`Blank Ballots`),
+            `Non-Blank Ballots` = sum(`Non-Blank Ballots`),
+            `Turnout including Blank Ballots (%)` = `Total Ballots` / Registered * 100,
+            `Turnout not including Blank Ballots (%)` = `Non-Blank Ballots` / Registered * 100)
+
+# aggregate to the city level (Baltimore City is its own county)
+turnout_2022_table_by_county <- turnout_2022_table_by_ward %>%
+  summarize(Registered = sum(Registered),
+            `Total Ballots` = sum(`Total Ballots`),
+            `Blank Ballots` = sum(`Blank Ballots`),
+            `Non-Blank Ballots` = sum(`Non-Blank Ballots`),
+            `Turnout including Blank Ballots (%)` = `Total Ballots` / Registered * 100,
+            `Turnout not including Blank Ballots (%)` = `Non-Blank Ballots` / Registered * 100)
+
+# summarize both turnout percentages
+turnout_2022_table_by_ward_summary <- turnout_2022_table_by_ward %>%
+  select(Ward, `Turnout including Blank Ballots (%)`, `Turnout not including Blank Ballots (%)`) %>%
+  pivot_longer(cols = c(`Turnout including Blank Ballots (%)`, `Turnout not including Blank Ballots (%)`),
+               names_to = "Metric",
+               values_to = "Turnout")
+
+turnout_2022_table_by_county_summary <- turnout_2022_table_by_county %>%
+  select(`Turnout including Blank Ballots (%)`, `Turnout not including Blank Ballots (%)`) %>%
+  pivot_longer(cols = c(`Turnout including Blank Ballots (%)`, `Turnout not including Blank Ballots (%)`),
+               names_to = "Metric",
+               values_to = "Turnout")
+
+# plot 2022 general election voter turnout
+turnout_2022_histogram <- ggplot() +
+  geom_histogram(data = turnout_2022_table_by_ward,
+                 aes(x = `Turnout including Blank Ballots (%)`),
+                 fill = "lightblue",
+                 binwidth = 5) +
+  geom_vline(data = turnout_2022_table_by_county,
+             aes(xintercept = `Turnout including Blank Ballots (%)`),
+             color = "red",
+             linetype = "dashed") +
+  xlab("Number of Ballots / Number of Registered Voters (%)") +
+  ylab("Number of Wards") +
+  ggtitle("Voter Turnout, including blank ballots, in 2022 General Election\nacross 28 Baltimore City Wards") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid = element_blank())
+turnout_2022_histogram
+
+turnout_non_blank_2022_histogram <- ggplot() +
+  geom_histogram(data = turnout_2022_table_by_ward,
+                 aes(x = `Turnout not including Blank Ballots (%)`),
+                 fill = "lightblue",
+                 binwidth = 5) +
+  geom_vline(data = turnout_2022_table_by_county,
+             aes(xintercept = `Turnout not including Blank Ballots (%)`),
+             color = "red",
+             linetype = "dashed") +
+  xlab("Number of Non-Blank Ballots / Number of Registered Voters (%)") +
+  ylab("Number of Wards") +
+  ggtitle("Voter Turnout, not including blank ballots, in 2022 General Election\nacross 28 Baltimore City Wards") +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid = element_blank()) +
+  theme_bw()
+turnout_non_blank_2022_histogram
+
+turnout_both_ballot_types_2022_boxplot <- ggplot() +
+  geom_boxplot(data = turnout_2022_table_by_ward_summary,
+               aes(y = Turnout)) +
+  geom_hline(data = turnout_2022_table_by_county_summary,
+             aes(yintercept = Turnout),
+             color = "red",
+             linetype = "dashed") +
+  facet_wrap(vars(Metric), labeller = as_labeller(c(`Turnout including Blank Ballots (%)` = "Including blank ballots",
+                                                    `Turnout not including Blank Ballots (%)` = "Not including blank ballots"))) +
+  ylab("Voter Turnout (%)") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid = element_blank()) +
+  theme_bw()
+turnout_both_ballot_types_2022_boxplot
+```
+
+So how does Baltimore City compare to other parts of Maryland? The Maryland Department of Legislative Services produced a helpful graphic (shown below) of voter turnout across Maryland's counties in not only the 2022 general election but also 2018 and 2020 [@turnout_2018to2022].
+
+![](images/4-GeVoterTOGrid_Map.pdf){width="130%"}
+
+From this graphic, which is reassuringly consistent with the 37.1% I calculated for Baltimore City's all-ballots voter turnout in 2022, we see that Baltimore City's turnout is significantly lower than other counties in 2022, as well as in 2018 and 2020.
+
+::: {.callout-note}
+Baltimore City is classified as a county on its own and should be distinguished from a different county called Baltimore County.
+:::
+
+:::{.callout-warning}
+The 2022 general election report I used for this data analysis did not mention absentee or mail-in ballots, so I am assuming that such ballots were included in the precinct numbers. However, this is an assumption, and I am also assuming the same of the Maryland Department of Legislative Services's graphic of 2018 and 2020 voter turnout (shown above).
+:::
+
+# Conclusion and Discussion
+
+In this project, I webscraped the 2022 general election results by precinct in Baltimore City in order to analyze voter turnout and the number of blank ballots in that election. I found that voter turnout ranged from 15% to 57% across the 28 wards in the city, and blank ballots were not common (since the distribution of voter turnout look relatively similar whether or not blank ballots were included) but not completely ignorable. Baltimore City had lower voter turnout (37%) in 2022 than all other counties in Maryland and compared to itself in 2018 and 2020, though the dip from 2020 is expected since 2020 is a presidential election, and Americans tend to vote more in those. Future work could investigate reasons for low turnout or blank ballots; my webscraping work can also facilitate analyzing election results (not just turnout) at a granularity down to the voting precinct.
+
+# References
+
+## Bibliography
+
+::: {#refs}
+:::
+
+## R functions used
+
+`stringr` (included in `tidyverse`)
+
+- str_extract() and str_extract_all()
+- str_split()
+
+`dplyr`
+
+- mutate()
+- rename()
+- select()
+- group_by()
+- summarize()
+- bind_rows()
+
+`tidyr`
+
+- pivot_wider()
+- pivot_longer()
+
+`ggplot2`
+
+- geom_histogram()
+- geom_vline()
+- geom_boxplot()
+- geom_hline()
+- ggtitle()
+- theme()
+- facet_wrap()
+
